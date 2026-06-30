@@ -1,0 +1,22 @@
+__pycache__/
+*.py[cod]
+*.so
+.env
+.venv/
+venv/
+dist/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.cache/
+data/cache/
+reports/
+*.pkl
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

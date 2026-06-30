@@ -1,0 +1,41 @@
+# ai-hedge-fund-india Configuration
+# Indian NSE/BSE algorithmic trading with multi-agent LLM analysis
+
+# ----- Universe -----
+universe:
+  type: nifty50           # nifty50, nifty100, nifty500
+  exclude_sectors: []
+  exclude_symbols: []
+
+# ----- Data -----
+data:
+  provider: yfinance      # yfinance (default), financialdatasets (paid)
+  cache_dir: ./data/cache
+  cache_ttl_hours: 24
+
+# ----- LLM -----
+llm:
+  provider: deepseek      # deepseek, openai, anthropic, groq, google
+  model: deepseek-chat
+
+# ----- Backtest -----
+backtest:
+  default_start: "2023-01-01"
+  default_end: "2025-01-01"
+
+# Indian market costs (delivery-based equity)
+costs:
+  stt_buy: 0.001           # 0.1% STT on buy
+  stt_sell: 0.001          # 0.1% STT on sell
+  stamp_duty: 0.00015      # 0.015% stamp duty on buy
+  brokerage: 0.0005        # 0.05% per side
+  slippage: 0.001          # 0.1% slippage
+  gst_rate: 0.18           # 18% GST on brokerage
+
+# ----- Risk -----
+risk:
+  risk_per_trade: 0.02     # 2% of portfolio per trade
+  max_positions: 15
+  daily_heat_limit: 0.06   # 6% daily loss limit
+  weekly_heat_limit: 0.10  # 10% weekly loss limit
+  max_sector_exposure: 0.30
