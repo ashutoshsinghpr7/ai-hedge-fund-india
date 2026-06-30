@@ -42,7 +42,7 @@ Output:
  Portfolio Manager: HOLD 0 shares        Portfolio Manager: BUY 500 shares (75%)
 ```
 
-Reports auto-save to `reports/RELIANCE.md` + `reports/RELIANCE.json`. Previous reports move to `reports/archive/`. [→ View sample report](samples/KSHINTL-report.md)
+Reports auto-save to `reports/RELIANCE.md` + `reports/RELIANCE.json`. Previous reports move to `reports/archive/`. [→ View sample report](samples/COALINDIA-report.md)
 
 ## Why This Repo?
 
