@@ -33,7 +33,7 @@ poetry run hedgefund scan --sector banking
 Output:
 
 ```
-━━━ RELIANCE ━━━                         ━━━ TCS ━━━
+━━━ RELIANCE ━━━                         ━━━ ITC  ━━━
  Agent          Signal     Confidence     Agent          Signal     Confidence
  warren_buffett  bullish      80%         warren_buffett  bullish      75%
  ben_graham      neutral      55%         ben_graham      neutral      50%
