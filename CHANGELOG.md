@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.1.0] - 2026-06-30
+## [0.1.0] - 2026-07-01
 
 ### Added
 
@@ -8,11 +8,15 @@
 - **YFinanceProvider**: Free NSE/BSE data via yfinance (prices, financials, news, market cap)
 - **Sector-based discovery**: `--sector pharma` discovers all stocks in a sector using static map + yfinance dynamic lookup
 - **CLI**: `hedgefund run --ticker RELIANCE` / `hedgefund scan --sector banking` / `hedgefund analyze --ticker RELIANCE`
-- **LLM providers**: DeepSeek (default), OpenAI, Anthropic, Groq, Google, Ollama
-- **LangGraph workflow**: Parallel agent execution → Risk Manager → Portfolio Manager
+- **LLM providers**: DeepSeek (default, ~₹0.02/1M tokens), OpenAI, Anthropic, Groq, Google, Ollama
+- **LangGraph workflow**: 22 parallel agents → Risk Manager → Portfolio Manager → decision
 - **Indian market costs**: STT, stamp duty, GST, SEBI charges in config
 - **Nifty 50/100 universe** with sector classification
+- **Per-ticker reports**: Auto-saved Markdown + JSON with archive on re-run
 - **Pickle cache** for data provider responses
+- **--show-reasoning** flag for full agent reasoning output
+- **--debug** flag for verbose warnings
+- **Sample report**: `samples/COALINDIA-report.md`
 
 ### Attribution
 
