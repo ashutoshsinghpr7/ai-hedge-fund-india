@@ -111,20 +111,45 @@ class YFinanceProvider(DataProvider):
 
     Uses yfinance library to fetch price and fundamental data.
     Tickers should use Yahoo Finance format (e.g., RELIANCE.NS, TCS.NS).
+    Bare tickers are auto-resolved: tries NSE (.NS) first, falls back to BSE (.BO).
     """
 
     def __init__(self, cache_dir: Optional[str] = None):
         self.cache_dir = cache_dir
+        self._exchange_cache: dict[str, str] = {}
 
-    def _ensure_nse_suffix(self, ticker: str) -> str:
-        """Ensure ticker has .NS or .BO suffix for Indian markets."""
-        if not ticker.endswith(".NS") and not ticker.endswith(".BO"):
-            return f"{ticker}.NS"
-        return ticker
+    def _resolve_exchange(self, ticker: str) -> str:
+        """Resolve a bare ticker to its exchange suffix. Tries NSE first, then BSE.
+
+        Explicitly suffixed tickers (.NS or .BO) are returned as-is.
+        Resolution is cached per instance.
+        """
+        if ticker.endswith(".NS") or ticker.endswith(".BO"):
+            return ticker
+
+        if ticker in self._exchange_cache:
+            return self._exchange_cache[ticker]
+
+        nse = f"{ticker}.NS"
+        try:
+            stock = yf.Ticker(nse)
+            df = stock.history(period="5d")
+            if not df.empty:
+                closes = df["Close"].dropna()
+                if not closes.empty and closes.iloc[-1] > 0:
+                    self._exchange_cache[ticker] = nse
+                    return nse
+        except Exception:
+            pass
+
+        bse = f"{ticker}.BO"
+        logger.info("Ticker %s not found on NSE, falling back to BSE", ticker)
+        self._exchange_cache[ticker] = bse
+        return bse
 
     def get_prices(self, ticker: str, start_date: str, end_date: str) -> list[Price]:
         """Fetch OHLCV price history from yfinance."""
-        symbol = self._ensure_nse_suffix(ticker)
+        symbol = self._resolve_exchange(ticker)
         try:
             stock = yf.Ticker(symbol)
             df = stock.history(start=start_date, end=end_date, interval="1d", auto_adjust=False)
@@ -157,7 +182,7 @@ class YFinanceProvider(DataProvider):
         limit: int = 10,
     ) -> list[FinancialMetrics]:
         """Fetch financial metrics computed from yfinance data."""
-        symbol = self._ensure_nse_suffix(ticker)
+        symbol = self._resolve_exchange(ticker)
         metrics_list = []
         try:
             stock = yf.Ticker(symbol)
@@ -240,7 +265,7 @@ class YFinanceProvider(DataProvider):
         limit: int = 10,
     ) -> list[LineItem]:
         """Fetch financial statement line items from yfinance."""
-        symbol = self._ensure_nse_suffix(ticker)
+        symbol = self._resolve_exchange(ticker)
         results = []
         try:
             stock = yf.Ticker(symbol)
@@ -313,7 +338,7 @@ class YFinanceProvider(DataProvider):
         limit: int = 1000,
     ) -> list[CompanyNews]:
         """Fetch company news from yfinance news endpoint."""
-        symbol = self._ensure_nse_suffix(ticker)
+        symbol = self._resolve_exchange(ticker)
         news_list = []
         try:
             stock = yf.Ticker(symbol)
@@ -348,7 +373,7 @@ class YFinanceProvider(DataProvider):
 
     def get_market_cap(self, ticker: str, end_date: str) -> Optional[float]:
         """Fetch market cap from yfinance info."""
-        symbol = self._ensure_nse_suffix(ticker)
+        symbol = self._resolve_exchange(ticker)
         try:
             stock = yf.Ticker(symbol)
             info = stock.info

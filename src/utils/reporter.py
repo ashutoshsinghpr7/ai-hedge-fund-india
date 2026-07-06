@@ -96,7 +96,7 @@ def _write_md(path: Path, display: str, now: datetime, date_str: str, model: str
 
     signal_bullets: list[tuple[str, str, float, str]] = []
     for agent_name, signals in analyst_signals.items():
-        if agent_name.startswith("risk_management") or ticker_ns(display) not in signals:
+        if agent_name.startswith("risk_management") or agent_name.startswith("web_enrichment") or ticker_ns(display) not in signals:
             continue
         sig = signals[ticker_ns(display)]
         signal_str = sig.get("signal", "unknown")

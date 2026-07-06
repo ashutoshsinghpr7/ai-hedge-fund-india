@@ -305,7 +305,15 @@ def get_universe(universe_type="nifty50", custom_symbols=None, exclude_sectors=N
     if custom_symbols:
         for sym in custom_symbols:
             if not sym.endswith(".NS") and not sym.endswith(".BO"):
-                sym = f"{sym}.NS"
+                import yfinance as yf
+                try:
+                    df = yf.Ticker(f"{sym}.NS").history(period="5d")
+                    if df.empty or df["Close"].dropna().empty:
+                        sym = f"{sym}.BO"
+                    else:
+                        sym = f"{sym}.NS"
+                except Exception:
+                    sym = f"{sym}.NS"
             if sym not in symbols:
                 symbols.append(sym)
 

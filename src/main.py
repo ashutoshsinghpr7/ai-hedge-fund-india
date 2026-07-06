@@ -27,6 +27,7 @@ from src.utils.analysts import get_analyst_nodes
 from src.utils.reporter import save_report
 from src.agents.risk_manager import risk_management_agent
 from src.agents.portfolio_manager import portfolio_management_agent
+from src.agents.web_enrichment import web_enrichment_agent
 from src.graph.state import AgentState
 from src.data.universe import get_available_sectors
 
@@ -36,10 +37,18 @@ console = Console()
 SECTORS = get_available_sectors()
 
 
-def _ensure_nse(ticker: str) -> str:
-    if not ticker.endswith(".NS") and not ticker.endswith(".BO"):
-        return f"{ticker}.NS"
-    return ticker
+def _ensure_suffix(ticker: str) -> str:
+    """For bare tickers, try NSE (.NS) first, fall back to BSE (.BO)."""
+    if ticker.endswith(".NS") or ticker.endswith(".BO"):
+        return ticker
+    import yfinance as yf
+    try:
+        df = yf.Ticker(f"{ticker}.NS").history(period="5d")
+        if not df.empty and df["Close"].dropna().iloc[-1] > 0:
+            return f"{ticker}.NS"
+    except Exception:
+        pass
+    return f"{ticker}.BO"
 
 
 def _display_name(ticker: str) -> str:
@@ -57,7 +66,7 @@ def cmd_run(args):
             return
         console.print(f"[dim]Sector '{args.sector}' → {len(tickers)} stocks[/dim]")
     elif args.ticker:
-        tickers = [_ensure_nse(t.strip()) for t in args.ticker.split(",")]
+        tickers = [_ensure_suffix(t.strip()) for t in args.ticker.split(",")]
     else:
         console.print("[red]Provide --ticker or --sector[/red]")
         return
@@ -99,7 +108,8 @@ def cmd_run(args):
             "data": {"tickers": tickers, "portfolio": portfolio, "start_date": start, "end_date": end,
                      "analyst_signals": {}},
             "metadata": {"show_reasoning": show_reasoning, "model_name": args.model or "deepseek-chat",
-                         "model_provider": args.provider or "DeepSeek"},
+                          "model_provider": args.provider or "DeepSeek",
+                          "no_web_fallback": args.no_web_fallback},
         })
 
         analyst_signals = final_state["data"]["analyst_signals"]
@@ -141,7 +151,7 @@ def _print_results(tickers, analyst_signals, decisions, show_reasoning):
         table.add_column("Confidence", style="green")
 
         for agent_name, signals in analyst_signals.items():
-            if agent_name.startswith("risk_management") or ticker not in signals:
+            if agent_name.startswith("risk_management") or agent_name.startswith("web_enrichment") or ticker not in signals:
                 continue
             sig = signals[ticker]
             signal_str = sig.get("signal", "unknown")
@@ -169,7 +179,7 @@ def cmd_analyze(args):
     """Quick data fetch without running AI agents."""
     from src.tools import get_price_data, get_financial_metrics
 
-    tickers = [_ensure_nse(t.strip()) for t in args.ticker.split(",")]
+    tickers = [_ensure_suffix(t.strip()) for t in args.ticker.split(",")]
     for ticker in tickers:
         display = _display_name(ticker)
         console.rule(f"[bold blue]{display} Data[/bold blue]")
@@ -241,7 +251,7 @@ def cmd_scan(args):
                 chg = (valid.iloc[-1] / valid.iloc[-2] - 1) * 100 if len(valid) >= 2 else 0
                 sym = "▲" if chg > 0 else "▼" if chg < 0 else "—"
                 color = "green" if chg > 0 else "red" if chg < 0 else "white"
-                console.print(f"  [{color}]{sym} {ticker.replace('.NS',''):<20} ₹{close:>8.2f}  ({chg:+.2f}%)[/{color}]")
+                console.print(f"  [{color}]{sym} {ticker.replace('.NS','').replace('.BO',''):<20} ₹{close:>8.2f}  ({chg:+.2f}%)[/{color}]")
             else:
                 console.print(f"  [red]✗ {ticker}: No data[/red]")
         except Exception as e:
@@ -253,6 +263,9 @@ def create_workflow(selected_analysts=None):
     workflow = StateGraph(AgentState)
     workflow.add_node("start_node", lambda s: s)
 
+    workflow.add_node("web_enrichment_agent", web_enrichment_agent)
+    workflow.add_edge("start_node", "web_enrichment_agent")
+
     analyst_nodes = get_analyst_nodes()
     if selected_analysts is None:
         selected_analysts = list(analyst_nodes.keys())
@@ -260,7 +273,7 @@ def create_workflow(selected_analysts=None):
     for analyst_key in selected_analysts:
         node_name, node_func = analyst_nodes[analyst_key]
         workflow.add_node(node_name, node_func)
-        workflow.add_edge("start_node", node_name)
+        workflow.add_edge("web_enrichment_agent", node_name)
 
     workflow.add_node("risk_management_agent", risk_management_agent)
     workflow.add_node("portfolio_manager", portfolio_management_agent)
@@ -294,6 +307,7 @@ def main():
     run.add_argument("--initial-cash", type=float, default=10000000.0, help="Initial cash (default ₹1 Cr)")
     run.add_argument("--margin-requirement", type=float, default=0.0, help="Margin requirement")
     run.add_argument("--no-save", action="store_true", help="Skip saving reports to disk")
+    run.add_argument("--no-web-fallback", action="store_true", help="Skip web enrichment scraping")
 
     analyze = subparsers.add_parser("analyze", help="Quick data fetch (no AI agents)")
     analyze.add_argument("--ticker", required=True, help="Comma-separated tickers")
