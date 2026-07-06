@@ -1,5 +1,5 @@
 def test_imports():
-    from src.main import _ensure_suffix, _display_name, create_workflow
+    from src.main import _ensure_suffix, _display_name, create_workflow  # noqa: F401
     assert _ensure_suffix("RELIANCE.NS") == "RELIANCE.NS"
     assert _ensure_suffix("TATASTEEL.BO") == "TATASTEEL.BO"
     assert _display_name("RELIANCE.NS") == "RELIANCE"
