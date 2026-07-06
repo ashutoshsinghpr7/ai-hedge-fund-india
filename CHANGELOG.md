@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.1] - 2026-07-06
+
+### Added
+- **BSE auto-discovery**: Bare tickers automatically try NSE (.NS) first, fall back to BSE (.BO) if no data found
+- **Web enrichment agent**: Scrapes Screener.in for fundamentals when yfinance has insufficient data
+- **CI workflow**: Ruff lint + pytest on every push and PR
+- **Poetry-based PyPI publish** workflow
+
+### Changed
+- `_ensure_nse()` → `_ensure_suffix()` with exchange auto-detection
+- `cmd_scan()` display strips both `.NS` and `.BO`
+- Graph: enrichment agent runs before other analysts
+
+### Fixed
+- GitHub Actions workflow now correctly triggers on release publish
+
 ## [0.1.0] - 2026-07-01
 
 ### Added

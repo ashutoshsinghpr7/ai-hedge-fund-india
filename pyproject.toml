@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "ai-hedge-fund-india"
-version = "0.1.0"
+version = "0.1.1"
 description = "AI-powered hedge fund for Indian NSE/BSE markets — multi-agent LLM-based analysis with Indian market data"
 authors = ["ace <ace@example.com>"]
 license = "MIT"
