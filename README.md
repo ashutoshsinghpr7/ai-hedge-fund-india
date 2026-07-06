@@ -199,7 +199,7 @@ ai-hedge-fund-india/
 - [ ] Walk-forward optimization
 - [ ] Monte Carlo simulation
 - [ ] Web UI (FastAPI + React)
-- [ ] BSE `.BO` suffix support
+- [x] BSE `.BO` suffix support
 
 ## Attribution
 
