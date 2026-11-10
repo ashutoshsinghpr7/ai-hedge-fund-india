@@ -8,7 +8,7 @@ from the environment and is never written to disk.
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
 from urllib.parse import parse_qs, urlparse
@@ -53,11 +53,24 @@ def load_session(path: Path | str = SESSION_FILE) -> Optional[dict]:
 
 def save_session(session: dict, path: Path | str = SESSION_FILE) -> None:
     path = Path(path)
-    path.write_text(json.dumps(session, indent=2), encoding="utf-8")
+    # `default=str` keeps the write from failing on non-JSON values such as the
+    # datetimes Kite returns in the session payload.
+    path.write_text(json.dumps(session, indent=2, default=str), encoding="utf-8")
     try:
         path.chmod(0o600)
     except OSError:  # best effort on Windows
         pass
+
+
+def _as_timestamp(value) -> str:
+    """Normalise Kite's datetime/date login_time to a JSON-safe ISO string."""
+    if isinstance(value, datetime):
+        return value.isoformat(timespec="seconds")
+    if isinstance(value, date):
+        return datetime(value.year, value.month, value.day).isoformat(timespec="seconds")
+    if value:
+        return str(value)
+    return datetime.now().isoformat(timespec="seconds")
 
 
 def complete_login(
@@ -73,7 +86,7 @@ def complete_login(
         "api_key": api_key,
         "access_token": data["access_token"],
         "user_id": data.get("user_id"),
-        "login_time": data.get("login_time") or datetime.now().isoformat(timespec="seconds"),
+        "login_time": _as_timestamp(data.get("login_time")),
     }
     save_session(session, path)
     return session

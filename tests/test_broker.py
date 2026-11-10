@@ -322,3 +322,39 @@ def test_create_client_reads_session_file(monkeypatch, tmp_path):
 
     assert client.api_key == "key"
     assert client.access_token == "token-123"
+
+
+def test_complete_login_persists_datetime_login_time(monkeypatch, tmp_path):
+    """Kite returns login_time as a datetime; it must not break JSON serialisation."""
+    from src.broker import auth
+
+    class FakeKite:
+        def __init__(self, api_key=None):
+            self.api_key = api_key
+
+        def generate_session(self, request_token, api_secret):
+            assert request_token == "req-123"
+            assert api_secret == "secret"
+            return {
+                "access_token": "token-abc",
+                "user_id": "AB1234",
+                "login_time": datetime(2026, 11, 10, 23, 15, 42),
+            }
+
+    monkeypatch.setattr(auth, "KiteConnect", FakeKite)
+    session_path = tmp_path / "session.json"
+
+    session = auth.complete_login("req-123", "key", "secret", session_path)
+
+    assert session["login_time"] == "2026-11-10T23:15:42"
+    assert auth.load_session(session_path)["access_token"] == "token-abc"
+    assert "secret" not in session_path.read_text(encoding="utf-8")
+
+
+def test_save_session_survives_unserialisable_values(tmp_path):
+    from src.broker import auth
+
+    session_path = tmp_path / "session.json"
+    auth.save_session({"api_key": "key", "login_time": datetime(2026, 11, 10, 6, 0)}, session_path)
+
+    assert auth.load_session(session_path)["api_key"] == "key"
