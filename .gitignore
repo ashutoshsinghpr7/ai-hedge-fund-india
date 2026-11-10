@@ -13,6 +13,9 @@ data/cache/
 reports/
 *.pkl
 
+# Zerodha Kite session (contains a live access token)
+.kite_session.json
+
 # IDE
 .vscode/
 .idea/
