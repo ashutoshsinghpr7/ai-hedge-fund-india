@@ -25,6 +25,7 @@ rich = "^13.0.0"
 requests = "^2.32.0"
 httpx = "^0.28.1"
 beautifulsoup4 = "^4.15.0"
+kiteconnect = "^5.2.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"

@@ -6,6 +6,7 @@ changing one assignment in config or main.py.
 """
 
 import logging
+from datetime import date
 from typing import Optional
 
 import pandas as pd
@@ -41,16 +42,25 @@ def set_provider(provider: DataProvider):
     _provider = provider
 
 
+def _cacheable(end_date: str) -> bool:
+    """Only cache ranges that are fully in the past, so live data is never stale."""
+    try:
+        return date.fromisoformat(end_date) < date.today()
+    except (TypeError, ValueError):
+        return True
+
+
 def get_prices(ticker: str, start_date: str, end_date: str, api_key: str = None) -> list[Price]:
     """Fetch price data with caching."""
     cache_key = f"{ticker}_{start_date}_{end_date}"
-    if cached_data := _cache.get_prices(cache_key):
+    use_cache = _cacheable(end_date)
+    if use_cache and (cached_data := _cache.get_prices(cache_key)):
         return [Price(**price) for price in cached_data]
 
     provider = get_provider()
     prices = provider.get_prices(ticker, start_date, end_date)
 
-    if prices:
+    if prices and use_cache:
         _cache.set_prices(cache_key, [p.model_dump() for p in prices])
 
     return prices

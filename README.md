@@ -143,6 +143,37 @@ poetry run hedgefund run --ticker RELIANCE --start 2023-01-01 --model gpt-4o --p
 poetry run hedgefund run --ticker RELIANCE --no-save
 ```
 
+## Zerodha (Kite Connect)
+
+Two independent capabilities are wired up, both read-only — **no orders are placed**:
+
+1. **Live prices** — `--data-source zerodha` routes OHLCV through Kite instead of yfinance
+   (fundamentals, news, and insider data still come from yfinance).
+2. **Live portfolio** — `--broker zerodha` hydrates the portfolio the risk manager sizes
+   against with your real cash, holdings, and positions instead of a fabricated flat book.
+
+Setup:
+
+```bash
+# 1. Create an app at https://developers.kite.trade and copy the API key/secret
+#    into .env
+KITE_API_KEY=...
+KITE_API_SECRET=...
+
+# 2. Log in once per trading day (Kite invalidates access tokens every morning)
+poetry run hedgefund login
+
+# 3. Inspect your live book
+poetry run hedgefund portfolio
+
+# 4. Run the agents against live data and your real positions
+poetry run hedgefund run --ticker RELIANCE,TCS --data-source zerodha --broker zerodha
+```
+
+`hedgefund login` writes `.kite_session.json` (git-ignored, contains the access token).
+`KITE_ACCESS_TOKEN` can be set instead for automation. Access tokens expire daily at
+~6 AM IST; the dashboard session, not this file, is what needs refreshing.
+
 ## Supported Sectors
 
 `agriculture, auto, aviation, banking, cement, chemicals, construction, consumer, defence, energy, financial_services, hospitality, industrial, infrastructure, insurance, metals, pharma, real_estate, technology, telecom, tourism`
@@ -170,10 +201,17 @@ ai-hedge-fund-india/
 │   ├── main.py              # CLI entry point
 │   ├── agents/              # 22 agent implementations
 │   ├── data/                # Data provider + models + universe
-│   │   ├── providers/       # YFinanceProvider (Zerodha planned)
+│   │   ├── providers/       # YFinanceProvider, ZerodhaProvider (Kite prices)
 │   │   ├── models.py        # Pydantic data models
 │   │   ├── universe.py      # Stock universe + sector discovery
 │   │   └── cache.py         # Pickle cache
+│   ├── broker/              # Broker integration (Zerodha Kite Connect, read-only)
+│   │   ├── base.py          # Broker ABC
+│   │   ├── zerodha.py       # Kite adapter: profile, book, funds, candles
+│   │   ├── instruments.py   # Symbol <-> instrument_token registry
+│   │   ├── portfolio.py     # Broker book -> agent portfolio dict
+│   │   ├── auth.py          # Login, session file, token lifecycle
+│   │   └── models.py        # InstrumentRef, BrokerPosition, Funds
 │   ├── tools/               # Public API layer (caching proxy)
 │   ├── graph/               # LangGraph workflow + state
 │   ├── llm/                 # LLM provider configs
@@ -186,7 +224,7 @@ ai-hedge-fund-india/
 
 ## Indian Market Specifics
 
-- **Data source**: yfinance (free, NSE `.NS` suffix)
+- **Data source**: yfinance (free, NSE `.NS` suffix) or Zerodha Kite Connect (`--data-source zerodha`)
 - **Costs configured**: STT (0.1%), Stamp Duty (0.015%), GST (18%), SEBI charges
 - **Universe**: Nifty 50 + Nifty Next 50 (100 stocks) with sector map
 - **India-specific agents**: Rakesh Jhunjhunwala, Radhakishan Damani, FII/DII Flow, RBI Policy
@@ -194,7 +232,8 @@ ai-hedge-fund-india/
 
 ## Roadmap
 
-- [ ] Zerodha Kite Connect integration for live data
+- [x] Zerodha Kite Connect integration for live data
+- [ ] Zerodha order execution (guarded, agent decisions -> real orders)
 - [ ] Indian backtester with STT/circuit filters
 - [ ] Walk-forward optimization
 - [ ] Monte Carlo simulation

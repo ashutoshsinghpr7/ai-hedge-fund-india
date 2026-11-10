@@ -9,7 +9,7 @@ universe:
 
 # ----- Data -----
 data:
-  provider: yfinance      # yfinance (default), financialdatasets (paid)
+  provider: yfinance      # yfinance (default), financialdatasets (paid), zerodha (Kite Connect, needs .env creds)
   cache_dir: ./data/cache
   cache_ttl_hours: 24
 

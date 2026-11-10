@@ -5,6 +5,8 @@ Usage:
     python src/main.py run --ticker RELIANCE,TCS       # Full AI agent analysis
     python src/main.py analyze --ticker RELIANCE        # Quick data fetch
     python src/main.py scan --sector pharma             # Market scan by sector
+    python src/main.py login                            # Zerodha Kite login (once per day)
+    python src/main.py portfolio                        # Live broker book
 
 Inspired by virattt/ai-hedge-fund (MIT License).
 """
@@ -55,6 +57,59 @@ def _display_name(ticker: str) -> str:
     return ticker.replace(".NS", "").replace(".BO", "")
 
 
+def _needs_broker(args) -> bool:
+    return getattr(args, "broker", None) == "zerodha" or getattr(args, "data_source", None) == "zerodha"
+
+
+def _connect_broker(args):
+    """Build the broker adapter when a flag needs it. Returns (broker, ok)."""
+    if not _needs_broker(args):
+        return None, True
+
+    from src.broker.auth import KiteAuthRequired
+    from src.broker.zerodha import ZerodhaBroker
+
+    try:
+        return ZerodhaBroker.from_env(), True
+    except KiteAuthRequired as exc:
+        console.print(f"[red]{exc}[/red]")
+        return None, False
+
+
+def _apply_data_source(broker, data_source):
+    """Route price data through the broker when requested."""
+    if data_source != "zerodha" or broker is None:
+        return
+
+    from src.data.providers.zerodha_provider import ZerodhaProvider
+    from src.tools import set_provider
+
+    set_provider(ZerodhaProvider(broker))
+    console.print("[dim]Price data: Zerodha Kite Connect · fundamentals: yfinance[/dim]")
+
+
+def _flat_portfolio(args, tickers) -> dict:
+    return {
+        "cash": args.initial_cash or 10000000.0,
+        "margin_requirement": args.margin_requirement or 0.0,
+        "margin_used": 0.0,
+        "positions": {
+            ticker: {"long": 0, "short": 0, "long_cost_basis": 0.0, "short_cost_basis": 0.0, "short_margin_used": 0.0}
+            for ticker in tickers
+        },
+        "realized_gains": {ticker: {"long": 0.0, "short": 0.0} for ticker in tickers},
+    }
+
+
+def _live_portfolio(broker, args, tickers) -> dict:
+    from src.broker.portfolio import portfolio_from_broker
+
+    portfolio = portfolio_from_broker(broker, tickers, margin_requirement=args.margin_requirement or 0.0)
+    open_positions = sum(1 for p in portfolio["positions"].values() if p["long"] or p["short"])
+    console.print(f"[dim]Broker book: ₹{portfolio['cash']:,.0f} cash · {open_positions} open position(s)[/dim]")
+    return portfolio
+
+
 def cmd_run(args):
     """Run the full AI agent pipeline on specified tickers or sector."""
     from src.data.universe import get_universe
@@ -74,6 +129,11 @@ def cmd_run(args):
     end = args.end or datetime.now().strftime("%Y-%m-%d")
     show_reasoning = args.show_reasoning
 
+    broker, ok = _connect_broker(args)
+    if not ok:
+        return
+    _apply_data_source(broker, args.data_source)
+
     progress.start(verbose=show_reasoning)
 
     console.rule(f"[bold blue]AI Hedge Fund Analysis: {', '.join(_display_name(t) for t in tickers)}[/bold blue]")
@@ -88,16 +148,7 @@ def cmd_run(args):
     )
     console.print()
 
-    portfolio = {
-        "cash": args.initial_cash or 10000000.0,
-        "margin_requirement": args.margin_requirement or 0.0,
-        "margin_used": 0.0,
-        "positions": {
-            ticker: {"long": 0, "short": 0, "long_cost_basis": 0.0, "short_cost_basis": 0.0, "short_margin_used": 0.0}
-            for ticker in tickers
-        },
-        "realized_gains": {ticker: {"long": 0.0, "short": 0.0} for ticker in tickers},
-    }
+    portfolio = _live_portfolio(broker, args, tickers) if broker else _flat_portfolio(args, tickers)
 
     try:
         workflow = create_workflow()
@@ -180,6 +231,12 @@ def cmd_analyze(args):
     from src.tools import get_price_data, get_financial_metrics
 
     tickers = [_ensure_suffix(t.strip()) for t in args.ticker.split(",")]
+
+    broker, ok = _connect_broker(args)
+    if not ok:
+        return
+    _apply_data_source(broker, args.data_source)
+
     for ticker in tickers:
         display = _display_name(ticker)
         console.rule(f"[bold blue]{display} Data[/bold blue]")
@@ -236,6 +293,12 @@ def cmd_scan(args):
 
     label = args.sector or args.universe or "nifty50"
     console.rule(f"[bold blue]Scan: {label} ({len(symbols)} stocks)[/bold blue]")
+
+    broker, ok = _connect_broker(args)
+    if not ok:
+        return
+    _apply_data_source(broker, args.data_source)
+
     end = datetime.now().strftime("%Y-%m-%d")
     start = "2024-01-01"
 
@@ -256,6 +319,94 @@ def cmd_scan(args):
                 console.print(f"  [red]✗ {ticker}: No data[/red]")
         except Exception as e:
             console.print(f"  [yellow]? {ticker}: {e}[/yellow]")
+    console.print()
+
+
+def cmd_login(args):
+    """Exchange a Kite request_token for an access_token (once per trading day)."""
+    from src.broker import auth
+
+    api_key = args.api_key or os.environ.get("KITE_API_KEY")
+    api_secret = os.environ.get("KITE_API_SECRET")
+    if not api_key or not api_secret:
+        console.print("[red]Set KITE_API_KEY and KITE_API_SECRET in .env first (see .env.example).[/red]")
+        return
+
+    url = auth.login_url(api_key)
+    console.rule("[bold blue]Zerodha Kite Connect login[/bold blue]")
+    console.print(f"1. Open this URL and log in:\n\n   [cyan]{url}[/cyan]\n")
+    console.print("2. Paste the full redirect URL (or just the request_token):")
+
+    raw = args.request_token or input("> ").strip()
+    if not raw:
+        console.print("[red]No request_token provided.[/red]")
+        return
+
+    try:
+        session = auth.complete_login(raw, api_key=api_key, api_secret=api_secret)
+    except Exception as exc:
+        console.print(f"[red]Login failed: {exc}[/red]")
+        return
+
+    console.print(
+        f"[green]✓ Session saved for {session.get('user_id') or 'account'} → {auth.SESSION_FILE}[/green]"
+    )
+    console.print("[dim]Access tokens expire every morning; re-run `hedgefund login` daily.[/dim]")
+
+
+def cmd_portfolio(args):
+    """Show the live broker book — funds, holdings, and open positions."""
+    from src.broker.portfolio import book_by_ticker
+
+    broker, ok = _connect_broker(args)
+    if not ok or broker is None:
+        return
+
+    try:
+        profile = broker.get_profile()
+        funds = broker.get_funds()
+        book = book_by_ticker(broker.get_positions(), broker.get_holdings())
+    except Exception as exc:
+        console.print(f"[red]Could not read the broker book: {exc}[/red]")
+        return
+
+    console.rule(f"[bold blue]Zerodha · {profile.get('user_id', 'account')}[/bold blue]")
+
+    funds_table = Table(title="Funds", show_header=False)
+    funds_table.add_column("Metric", style="cyan")
+    funds_table.add_column("Value", style="green")
+    funds_table.add_row("Available cash", f"₹{funds.cash:,.2f}")
+    funds_table.add_row("Margin used", f"₹{funds.margin_used:,.2f}")
+    if funds.collateral:
+        funds_table.add_row("Collateral", f"₹{funds.collateral:,.2f}")
+    console.print(funds_table)
+
+    if not book:
+        console.print("[yellow]No open positions or holdings.[/yellow]")
+        return
+
+    table = Table(title="Book")
+    for column in ("Symbol", "Exchange", "Qty", "Avg", "LTP", "Value", "P&L", "Source"):
+        table.add_column(column)
+
+    for position in sorted(book.values(), key=lambda p: p.instrument.tradingsymbol):
+        price = position.last_price or position.average_price
+        value = position.quantity * price
+        pnl = position.quantity * (price - position.average_price)
+        color = "green" if pnl >= 0 else "red"
+        table.add_row(
+            position.instrument.tradingsymbol,
+            position.instrument.exchange,
+            str(position.quantity),
+            f"₹{position.average_price:,.2f}",
+            f"₹{price:,.2f}",
+            f"₹{value:,.2f}",
+            f"[{color}]₹{pnl:,.2f}[/{color}]",
+            position.source,
+        )
+
+    console.print(table)
+    console.print("[dim]Feed this book to the agents with: hedgefund run --broker zerodha ...[/dim]")
     console.print()
 
 
@@ -308,11 +459,23 @@ def main():
     run.add_argument("--margin-requirement", type=float, default=0.0, help="Margin requirement")
     run.add_argument("--no-save", action="store_true", help="Skip saving reports to disk")
     run.add_argument("--no-web-fallback", action="store_true", help="Skip web enrichment scraping")
+    run.add_argument(
+        "--broker",
+        choices=["zerodha"],
+        help="Hydrate the portfolio from a live broker account instead of flat cash",
+    )
+    run.add_argument(
+        "--data-source",
+        choices=["yfinance", "zerodha"],
+        default="yfinance",
+        help="Price source for the agents (default: yfinance)",
+    )
 
     analyze = subparsers.add_parser("analyze", help="Quick data fetch (no AI agents)")
     analyze.add_argument("--ticker", required=True, help="Comma-separated tickers")
     analyze.add_argument("--start", help="Start date")
     analyze.add_argument("--end", help="End date")
+    analyze.add_argument("--data-source", choices=["yfinance", "zerodha"], default="yfinance")
 
     scan = subparsers.add_parser("scan", help="Scan a universe of stocks")
     scan.add_argument("--universe", default="nifty50", choices=["nifty50", "nifty100", "nifty500"])
@@ -320,6 +483,15 @@ def main():
     scan.add_argument("--exclude-sectors", help="Comma-separated sectors")
     scan.add_argument("--exclude-symbols", help="Comma-separated symbols")
     scan.add_argument("--limit", type=int, default=10)
+    scan.add_argument("--data-source", choices=["yfinance", "zerodha"], default="yfinance")
+
+    login = subparsers.add_parser("login", help="Authenticate with Zerodha Kite Connect")
+    login.add_argument("--api-key", help="Kite API key (defaults to KITE_API_KEY)")
+    login.add_argument("--request-token", help="request_token from the redirect URL (skips the prompt)")
+
+    portfolio = subparsers.add_parser("portfolio", help="Show the live broker book")
+    portfolio.add_argument("--broker", choices=["zerodha"], default="zerodha")
+    portfolio.add_argument("--data-source", choices=["yfinance", "zerodha"], default="yfinance")
 
     args = parser.parse_args()
     if not args.command:
@@ -330,7 +502,14 @@ def main():
     if not debug:
         warnings.filterwarnings("ignore", category=FutureWarning)
 
-    {"run": cmd_run, "analyze": cmd_analyze, "scan": cmd_scan}.get(args.command, lambda a: parser.print_help())(args)
+    commands = {
+        "run": cmd_run,
+        "analyze": cmd_analyze,
+        "scan": cmd_scan,
+        "login": cmd_login,
+        "portfolio": cmd_portfolio,
+    }
+    commands.get(args.command, lambda a: parser.print_help())(args)
 
 
 if __name__ == "__main__":
